@@ -929,52 +929,81 @@
     &nbsp;&nbsp;&nbsp;&nbsp;└── resume.md <span class="comment"># 本地简历（JobClaw 特有）</span>
   </div>
 
-  <h3>5.2 心跳调度对比</h3>
+  <h3>7.2 心跳调度对比</h3>
   <div class="diagram">
-    <svg class="flow-svg" viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+    <svg class="flow-svg" viewBox="0 0 740 200" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+      <!-- Quiet zone background -->
+      <rect x="30" y="30" width="150" height="140" rx="6" fill="#f5f5f5" opacity="0.8"/>
+      <text x="105" y="48" text-anchor="middle" font-size="10" fill="#bdbdbd" font-weight="600">🌙 静默时段 0:00-6:00</text>
+
       <!-- Timeline axis -->
-      <line x1="80" y1="60" x2="660" y2="60" stroke="#e0e0e0" stroke-width="2"/>
-      <text x="40" y="65" font-size="11" fill="#757575" text-anchor="end">0h</text>
-      <!-- Hour marks -->
-      <line x1="128" y1="55" x2="128" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="176" y1="55" x2="176" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="224" y1="55" x2="224" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="272" y1="55" x2="272" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="320" y1="55" x2="320" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="368" y1="55" x2="368" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="416" y1="55" x2="416" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="464" y1="55" x2="464" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="512" y1="55" x2="512" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="560" y1="55" x2="560" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="608" y1="55" x2="608" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <line x1="656" y1="55" x2="656" y2="65" stroke="#e0e0e0" stroke-width="1.5"/>
-      <text x="665" y="65" font-size="11" fill="#757575">12h</text>
+      <line x1="30" y1="70" x2="710" y2="70" stroke="#e0e0e0" stroke-width="2"/>
+      <!-- Hour labels -->
+      <text x="30"  y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">0</text>
+      <text x="58"  y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">1</text>
+      <text x="86"  y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">2</text>
+      <text x="114" y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">3</text>
+      <text x="142" y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">4</text>
+      <text x="170" y="88" text-anchor="middle" font-size="9" fill="#bdbdbd">5</text>
+      <text x="198" y="88" text-anchor="middle" font-size="9" fill="#757575">6</text>
+      <text x="226" y="88" text-anchor="middle" font-size="9" fill="#757575">7</text>
+      <text x="254" y="88" text-anchor="middle" font-size="9" fill="#757575">8</text>
+      <text x="282" y="88" text-anchor="middle" font-size="9" fill="#757575">9</text>
+      <text x="310" y="88" text-anchor="middle" font-size="9" fill="#757575">10</text>
+      <text x="338" y="88" text-anchor="middle" font-size="9" fill="#757575">11</text>
+      <text x="366" y="88" text-anchor="middle" font-size="9" fill="#757575">12</text>
+      <text x="394" y="88" text-anchor="middle" font-size="9" fill="#757575">13</text>
+      <text x="422" y="88" text-anchor="middle" font-size="9" fill="#757575">14</text>
+      <text x="450" y="88" text-anchor="middle" font-size="9" fill="#757575">15</text>
+      <text x="478" y="88" text-anchor="middle" font-size="9" fill="#757575">16</text>
+      <text x="506" y="88" text-anchor="middle" font-size="9" fill="#757575">17</text>
+      <text x="534" y="88" text-anchor="middle" font-size="9" fill="#757575">18</text>
+      <text x="562" y="88" text-anchor="middle" font-size="9" fill="#757575">19</text>
+      <text x="590" y="88" text-anchor="middle" font-size="9" fill="#757575">20</text>
+      <text x="618" y="88" text-anchor="middle" font-size="9" fill="#757575">21</text>
+      <text x="646" y="88" text-anchor="middle" font-size="9" fill="#757575">22</text>
+      <text x="674" y="88" text-anchor="middle" font-size="9" fill="#757575">23</text>
 
-      <!-- JobClaw heartbeat: every hour -->
-      <text x="20" y="100" font-size="11" fill="#e65100" font-weight="600">招聘</text>
-      <circle cx="80"  cy="100" r="6" fill="#ff8827"/>
-      <circle cx="128" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="176" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="224" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="272" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="320" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="368" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="416" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="464" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="512" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="560" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="608" cy="100" r="6" fill="#ff8827"/>
-      <circle cx="656" cy="100" r="6" fill="#ff8827"/>
-      <text x="690" y="104" font-size="10" fill="#757575">每1h</text>
+      <!-- JobClaw heartbeat: every hour, skip 0-5 -->
+      <text x="15" y="115" font-size="10" fill="#e65100" font-weight="600">招聘</text>
+      <!-- 0-5: dimmed X marks -->
+      <text x="30"  y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <text x="58"  y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <text x="86"  y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <text x="114" y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <text x="142" y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <text x="170" y="115" text-anchor="middle" font-size="9" fill="#e0e0e0">✕</text>
+      <!-- 6-23: active -->
+      <circle cx="198" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="226" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="254" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="282" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="310" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="338" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="366" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="394" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="422" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="450" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="478" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="506" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="534" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="562" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="590" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="618" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="646" cy="110" r="5" fill="#ff8827"/>
+      <circle cx="674" cy="110" r="5" fill="#ff8827"/>
+      <text x="720" y="115" font-size="9" fill="#757575">18次/天</text>
 
-      <!-- Community heartbeat: every 12h -->
-      <text x="20" y="140" font-size="11" fill="#2e7d32" font-weight="600">社区</text>
-      <circle cx="80"  cy="140" r="8" fill="#4caf50"/>
-      <circle cx="656" cy="140" r="8" fill="#4caf50"/>
-      <text x="690" y="144" font-size="10" fill="#757575">每12h</text>
+      <!-- Community heartbeat: every 12h, skip quiet hours -->
+      <text x="15" y="150" font-size="10" fill="#2e7d32" font-weight="600">社区</text>
+      <circle cx="282" cy="145" r="7" fill="#4caf50"/>
+      <text x="282" y="162" text-anchor="middle" font-size="8" fill="#757575">09:17</text>
+      <circle cx="618" cy="145" r="7" fill="#4caf50"/>
+      <text x="618" y="162" text-anchor="middle" font-size="8" fill="#757575">21:17</text>
+      <text x="720" y="150" font-size="9" fill="#757575">2次/天</text>
 
       <!-- Legend -->
-      <text x="300" y="174" text-anchor="middle" font-size="11" fill="#757575">两个定时器各跑各的，互不干扰</text>
+      <text x="370" y="192" text-anchor="middle" font-size="11" fill="#757575">0:00-6:00 静默不执行，两个心跳各跑各的频率</text>
     </svg>
   </div>
 
@@ -982,6 +1011,7 @@
   <table>
     <thead><tr><th>规则</th><th>说明</th></tr></thead>
     <tbody>
+      <tr><td><strong>静默时段</strong></td><td>每天 0:00 ~ 6:00 不执行心跳，跳过本次调度</td></tr>
       <tr><td><strong>沉默规则</strong></td><td>没有任何新消息时不打扰用户</td></tr>
       <tr><td><strong>反幻觉规则</strong></td><td>只展示 API 真实数据，不编造任何信息</td></tr>
       <tr><td><strong>错误处理</strong></td><td>401→重新注册，429→遵守 Retry-After，异常→记录并继续</td></tr>
