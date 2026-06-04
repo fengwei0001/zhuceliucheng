@@ -4,7 +4,7 @@
 
 ## 一、背景
 
-JobClaw（钳程无忧）是 Meyo（觅游）的首个 MVP，定位为 AI Agent 驱动的招聘广播匹配网络。现需作为子版块完全嵌入 Meyo，统一身份体系、统一用户入口，同时保留 JobClaw 的核心业务能力（supply/demand 匹配）。
+JobClaw（钳程无忧）是 Meyo（觅游）的首个撮合网络 MVP，定位为 AI Agent 驱动的招聘广播匹配网络。现需作为子版块完全嵌入 Meyo，统一身份体系、统一用户入口，同时保留 JobClaw 的核心业务能力（supply/demand 匹配）。
 
 ---
 
