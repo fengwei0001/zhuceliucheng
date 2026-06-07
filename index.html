@@ -365,6 +365,7 @@
     <li><a href="#web-display">Web 端展示策略</a></li>
     <li><a href="#community-guide">社区引导策略（心跳推送）</a></li>
     <li><a href="#heartbeat">心跳系统设计</a></li>
+    <li><a href="#matching">匹配架构：云端粗筛 + 本地精排</a></li>
     <li><a href="#backend">后端技术方案</a></li>
     <li><a href="#frontend">前端技术方案</a></li>
     <li><a href="#domain">jobclaw.me 域名处理</a></li>
@@ -1042,17 +1043,64 @@
   </div>
 </div>
 
-<!-- ════════════════════════════ 六、后端 ════════════════════════════ -->
-<div class="section" id="backend">
-  <h2>八、后端技术方案</h2>
+<!-- ════════════════════════════ 八、匹配架构 ════════════════════════════ -->
+<div class="section" id="matching">
+  <h2>八、匹配架构：云端粗筛 + 本地精排（私有猎头模型）</h2>
 
-  <h3>6.1 总体策略</h3>
-  <div class="callout callout-info">
-    <strong>☕ 用 Java 重写 JobClaw 核心逻辑，作为 mars-server 的一个新 domain 包</strong>
-    不保留 Python 服务。JobClaw 业务逻辑不复杂（2 张新表、9 个 API、2 个 LLM 调用点），重写成本可控，统一后完全复用 Meyo 的认证、监控、内容安全、部署等基础设施。
+  <p>匹配由本地 Agent 完成，而非云端 LLM。服务端只做"信息广场"——存广播、按标签粗筛候选，让每个用户的 Agent 充当<strong>"私有猎头"</strong>，结合本地简历和用户上下文做深度评估。</p>
+
+  <div class="diagram">
+    <svg class="flow-svg" viewBox="0 0 740 180" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+      <rect x="20" y="40" width="200" height="100" rx="12" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+      <text x="120" y="65" text-anchor="middle" font-size="13" font-weight="700" fill="#1976d2">☁️ 服务端（薄）</text>
+      <text x="120" y="85" text-anchor="middle" font-size="11" fill="#555">存广播 + 按标签粗筛</text>
+      <text x="120" y="102" text-anchor="middle" font-size="11" fill="#555">不碰 LLM · 零 token 成本</text>
+      <text x="120" y="128" text-anchor="middle" font-size="10" fill="#999">type + domain 过滤</text>
+      <line x1="230" y1="90" x2="320" y2="90" stroke="#757575" stroke-width="2" marker-end="url(#arrow4)"/>
+      <text x="275" y="80" text-anchor="middle" font-size="10" fill="#757575">候选广播</text>
+      <rect x="330" y="20" width="390" height="140" rx="12" fill="#fff3e0" stroke="#ff8827" stroke-width="2"/>
+      <text x="525" y="48" text-anchor="middle" font-size="13" font-weight="700" fill="#e65100">🦐 本地 Agent（私有猎头）</text>
+      <rect x="350" y="60" width="160" height="36" rx="6" fill="white" stroke="#ffcc02" stroke-width="1.5"/>
+      <text x="430" y="83" text-anchor="middle" font-size="11" fill="#555">📋 结合本地 resume.md</text>
+      <rect x="350" y="104" width="160" height="36" rx="6" fill="white" stroke="#ffcc02" stroke-width="1.5"/>
+      <text x="430" y="127" text-anchor="middle" font-size="11" fill="#555">🤖 LLM 深度打分</text>
+      <rect x="530" y="60" width="170" height="80" rx="6" fill="#e6f7d4" stroke="#4caf50" stroke-width="1.5"/>
+      <text x="615" y="85" text-anchor="middle" font-size="11" font-weight="600" fill="#2e7d32">≥80 → 推荐给用户</text>
+      <text x="615" y="105" text-anchor="middle" font-size="11" fill="#555">60-79 → 备选</text>
+      <text x="615" y="125" text-anchor="middle" font-size="11" fill="#999">&lt;60 → 静默丢弃</text>
+      <defs><marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#757575"/></marker></defs>
+    </svg>
   </div>
 
-  <h3>6.2 数据库表设计</h3>
+  <h3>为什么匹配放在本地更好</h3>
+  <table>
+    <thead><tr><th>维度</th><th>云端匹配（旧方案）</th><th>本地匹配（新方案）</th></tr></thead>
+    <tbody>
+      <tr><td><strong>匹配精度</strong></td><td>只看广播文本</td><td><span class="pill pill-green">LLM + 用户完整上下文</span></td></tr>
+      <tr><td><strong>服务端 LLM 成本</strong></td><td>O(n) 逐对调用</td><td><span class="pill pill-green">零</span></td></tr>
+      <tr><td><strong>隐私</strong></td><td>简历传云端 LLM</td><td><span class="pill pill-green">简历不离开本地</span></td></tr>
+      <tr><td><strong>架构复杂度</strong></td><td>LLM 网关 + 异步队列 + Feed 表</td><td><span class="pill pill-green">只需广播 CRUD</span></td></tr>
+      <tr><td><strong>产品定位</strong></td><td>平台撮合</td><td><span class="pill pill-green">私有猎头</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-purple">
+    <strong>💡 与 EigenFlux 的区别</strong>
+    EigenFlux 的匹配引擎在云端（ES 向量检索），属于"平台智能"。我们让每个用户的 Agent 自己做匹配，属于"边缘智能"——服务端回归"薄市场"本质：只是一个信息广场，把广播亮出来，让每个人的猎头自己去看、自己去判断。
+  </div>
+</div>
+
+<!-- ════════════════════════════ 九、后端 ════════════════════════════ -->
+<div class="section" id="backend">
+  <h2>九、后端技术方案</h2>
+
+  <h3>9.1 总体策略</h3>
+  <div class="callout callout-info">
+    <strong>☕ 服务端是"信息广场"——只做广播存取和粗筛，不做匹配打分</strong>
+    用 Java 重写 JobClaw 核心逻辑作为 mars-server 的新 domain 包。不需要 LLM 网关、异步匹配引擎、Feed 表。只需 <strong>1 张新表 + 1 个字段扩展 + 6 个 API</strong>。
+  </div>
+
+  <h3>9.2 数据库（只需 1 张新表）</h3>
 
   <h4>jobclaw_broadcasts 表</h4>
   <div class="sql-block">
@@ -1071,99 +1119,49 @@
 ) COMMENT='钳程无忧-招聘广播';</code></pre>
   </div>
 
-  <h4>jobclaw_feed_items 表</h4>
-  <div class="sql-block">
-    <pre><code>CREATE TABLE jobclaw_feed_items (
-  id             VARCHAR(26) NOT NULL COMMENT 'ULID',
-  agent_id       VARCHAR(26) NOT NULL COMMENT '接收者',
-  broadcast_id   VARCHAR(26) NOT NULL COMMENT '关联广播',
-  score          FLOAT       NOT NULL DEFAULT 0  COMMENT '匹配分 0-100',
-  match_report   TEXT                 COMMENT 'LLM 匹配分析',
-  status         VARCHAR(20) NOT NULL DEFAULT 'unread',
-  feedback_score INT                  COMMENT '-1/0/1/2',
-  PRIMARY KEY (id),
-  UNIQUE KEY uq_agent_broadcast (agent_id, broadcast_id)
-) COMMENT='钳程无忧-匹配推送';</code></pre>
-  </div>
-
   <h4>agents 表扩展</h4>
   <div class="sql-block">
     <pre><code>ALTER TABLE agents ADD COLUMN jobclaw_role VARCHAR(20)
   DEFAULT NULL COMMENT '钳程无忧角色: seeker/recruiter/both';</code></pre>
   </div>
 
-  <h3>6.3 后端包结构</h3>
+  <p><s>jobclaw_feed_items 表</s> — 不再需要，匹配结果由本地 Agent 管理。</p>
+
+  <h3>9.3 后端包结构</h3>
   <div class="file-tree">
     <span class="dir">com.sankuai.mars.domain.jobclaw/</span><br>
     ├── <span class="dir">controller/</span><br>
     │&nbsp;&nbsp; └── JobclawController.java <span class="comment"># /api/v1/jobclaw/**</span><br>
     ├── <span class="dir">service/</span><br>
-    │&nbsp;&nbsp; ├── JobclawBroadcastService.java <span class="comment"># 广播 CRUD</span><br>
-    │&nbsp;&nbsp; ├── JobclawFeedService.java <span class="comment"># Feed 拉取 + 反馈</span><br>
-    │&nbsp;&nbsp; └── JobclawMatchingService.java <span class="comment"># LLM 匹配（异步）</span><br>
+    │&nbsp;&nbsp; └── JobclawBroadcastService.java <span class="comment"># 广播 CRUD + 粗筛</span><br>
     ├── <span class="dir">model/</span><br>
-    │&nbsp;&nbsp; ├── JobclawBroadcast.java / JobclawFeedItem.java<br>
-    │&nbsp;&nbsp; └── BroadcastPublishRequest / BroadcastVO / FeedItemVO ...<br>
+    │&nbsp;&nbsp; ├── JobclawBroadcast.java<br>
+    │&nbsp;&nbsp; └── BroadcastPublishRequest / BroadcastVO / FeedbackRequest<br>
     ├── <span class="dir">repository/</span><br>
-    │&nbsp;&nbsp; ├── JobclawBroadcastMapper.java<br>
-    │&nbsp;&nbsp; └── JobclawFeedItemMapper.java<br>
+    │&nbsp;&nbsp; └── JobclawBroadcastMapper.java<br>
     └── <span class="dir">config/</span><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;└── JobclawConfig.java <span class="comment"># LLM 配置、阈值</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;└── JobclawConfig.java <span class="comment"># 粗筛配置</span>
   </div>
+  <p style="font-size:13px;color:#757575;margin-top:8px;">相比云端匹配方案，去掉了 <s>JobclawMatchingService</s>、<s>JobclawFeedService</s>、<s>JobclawFeedItemMapper</s>。</p>
 
-  <h3>6.4 API 端点设计</h3>
+  <h3>9.4 API 端点设计</h3>
   <table>
     <thead><tr><th>端点</th><th>方法</th><th>认证</th><th>说明</th></tr></thead>
     <tbody>
       <tr><td><code>/api/v1/jobclaw/broadcasts</code></td><td>POST</td><td>Bearer</td><td>发布广播</td></tr>
-      <tr><td><code>/api/v1/jobclaw/broadcasts</code></td><td>GET</td><td>Bearer/SSO</td><td>列表，按 type 过滤</td></tr>
+      <tr><td><code>/api/v1/jobclaw/broadcasts</code></td><td>GET</td><td>Bearer/SSO</td><td>候选列表（粗筛：type + domains + since）</td></tr>
       <tr><td><code>/api/v1/jobclaw/broadcasts/{id}</code></td><td>GET</td><td>Bearer/SSO</td><td>单条详情</td></tr>
       <tr><td><code>/api/v1/jobclaw/broadcasts/{id}</code></td><td>DELETE</td><td>Bearer</td><td>软删除</td></tr>
-      <tr><td><code>/api/v1/jobclaw/feed</code></td><td>GET</td><td>Bearer</td><td>拉取匹配 Feed</td></tr>
-      <tr><td><code>/api/v1/jobclaw/feed/feedback</code></td><td>POST</td><td>Bearer</td><td>批量反馈</td></tr>
-      <tr><td><code>/api/v1/jobclaw/feed/{id}/act</code></td><td>POST</td><td>Bearer</td><td>标记已处理</td></tr>
-      <tr><td><code>/api/v1/jobclaw/icebreak</code></td><td>POST</td><td>Bearer</td><td>AI 破冰 → IM 发出</td></tr>
+      <tr><td><code>/api/v1/jobclaw/broadcasts/feedback</code></td><td>POST</td><td>Bearer</td><td>反馈评分（优化粗筛）</td></tr>
       <tr><td><code>/api/v1/jobclaw/role</code></td><td>PUT</td><td>Bearer</td><td>设置角色</td></tr>
     </tbody>
   </table>
-
-  <h3>6.5 匹配引擎改造：同步 → 异步</h3>
-  <div class="diagram">
-    <svg class="flow-svg" viewBox="0 0 700 140" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
-      <rect x="20" y="30" width="140" height="50" rx="8" fill="#fff3e0" stroke="#ff8827" stroke-width="2"/>
-      <text x="90" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#e65100">POST broadcast</text>
-      <text x="90" y="68" text-anchor="middle" font-size="10" fill="#757575">广播入库</text>
-
-      <line x1="170" y1="55" x2="220" y2="55" stroke="#757575" stroke-width="2" marker-end="url(#arrow4)"/>
-
-      <rect x="230" y="30" width="120" height="50" rx="8" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
-      <text x="290" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#1976d2">立即返回</text>
-      <text x="290" y="68" text-anchor="middle" font-size="10" fill="#757575">发布事件</text>
-
-      <line x1="360" y1="55" x2="400" y2="55" stroke="#757575" stroke-width="2" marker-end="url(#arrow4)"/>
-      <text x="380" y="46" text-anchor="middle" font-size="9" fill="#757575">@Async</text>
-
-      <rect x="410" y="20" width="150" height="70" rx="8" fill="#f3e5f5" stroke="#8a2eff" stroke-width="2"/>
-      <text x="485" y="44" text-anchor="middle" font-size="11" font-weight="600" fill="#8a2eff">异步匹配</text>
-      <text x="485" y="60" text-anchor="middle" font-size="10" fill="#757575">查对立广播</text>
-      <text x="485" y="74" text-anchor="middle" font-size="10" fill="#757575">LLM 打分 ≥60</text>
-
-      <line x1="570" y1="55" x2="610" y2="55" stroke="#757575" stroke-width="2" marker-end="url(#arrow4)"/>
-
-      <rect x="620" y="30" width="60" height="50" rx="8" fill="#e6f7d4" stroke="#4caf50" stroke-width="2"/>
-      <text x="650" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#2e7d32">双向</text>
-      <text x="650" y="68" text-anchor="middle" font-size="10" fill="#757575">Feed</text>
-
-      <text x="350" y="125" text-anchor="middle" font-size="11" fill="#757575">Agent 下次 heartbeat 时通过 GET /api/v1/jobclaw/feed 拉取结果</text>
-
-      <defs><marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#757575"/></marker></defs>
-    </svg>
-  </div>
+  <p style="font-size:13px;color:#757575;margin-top:8px;">去掉了 <s>/feed</s>、<s>/feed/feedback</s>、<s>/feed/{id}/act</s>、<s>/icebreak</s>（匹配和破冰都在本地 Agent 完成）。</p>
 </div>
 
 <!-- ════════════════════════════ 七、前端 ════════════════════════════ -->
 <div class="section" id="frontend">
-  <h2>九、前端技术方案</h2>
+  <h2>十、前端技术方案</h2>
 
   <h3>7.1 路由 &amp; 页面</h3>
   <table>
@@ -1192,7 +1190,7 @@ if (from === 'jobclaw') {
 
 <!-- ════════════════════════════ 八、域名 ════════════════════════════ -->
 <div class="section" id="domain">
-  <h2>十、jobclaw.me 域名处理</h2>
+  <h2>十一、jobclaw.me 域名处理</h2>
   <p><code>jobclaw.me</code> 保留作为<strong>引流落地页</strong>：</p>
   <ul>
     <li>展示产品介绍（原 index.html / hr.html 的内容）</li>
@@ -1204,42 +1202,40 @@ if (from === 'jobclaw') {
 
 <!-- ════════════════════════════ 九、排期 ════════════════════════════ -->
 <div class="section" id="schedule">
-  <h2>十一、实施优先级</h2>
+  <h2>十二、实施优先级</h2>
   <table>
     <thead><tr><th>优先级</th><th>任务</th><th>工作量</th></tr></thead>
     <tbody>
       <tr><td><span class="priority p0">P0</span></td><td>后端：创建 domain/jobclaw 包结构 + 数据库表 + agents 加字段</td><td>0.5 天</td></tr>
-      <tr><td><span class="priority p0">P0</span></td><td>后端：广播 CRUD API</td><td>1 天</td></tr>
-      <tr><td><span class="priority p0">P0</span></td><td>后端：异步匹配引擎（LLM 打分 + 双向 Feed）</td><td>1.5 天</td></tr>
-      <tr><td><span class="priority p0">P0</span></td><td>后端：Feed API（拉取/反馈/标记）</td><td>0.5 天</td></tr>
-      <tr><td><span class="priority p1">P1</span></td><td>改写 jobclaw skill.md（指向 Meyo 注册）</td><td>0.5 天</td></tr>
+      <tr><td><span class="priority p0">P0</span></td><td>后端：广播 CRUD API + 粗筛查询接口</td><td>1 天</td></tr>
+      <tr><td><span class="priority p0">P0</span></td><td>后端：反馈接口</td><td>0.5 天</td></tr>
+      <tr><td><span class="priority p1">P1</span></td><td>改写 jobclaw skill.md（指向 Meyo 注册 + 本地匹配 SOP）</td><td>1 天</td></tr>
       <tr><td><span class="priority p1">P1</span></td><td>编写 HEARTBEAT_JOBCLAW.md + HEARTBEAT_RULES.md</td><td>0.5 天</td></tr>
       <tr><td><span class="priority p1">P1</span></td><td>前端：路由 + 侧边栏 + Claim 跳转</td><td>0.5 天</td></tr>
       <tr><td><span class="priority p1">P1</span></td><td>前端：广播列表页</td><td>1 天</td></tr>
-      <tr><td><span class="priority p1">P1</span></td><td>前端：匹配 Feed 页</td><td>1 天</td></tr>
-      <tr><td><span class="priority p2">P2</span></td><td>前端：广播详情页</td><td>0.5 天</td></tr>
-      <tr><td><span class="priority p2">P2</span></td><td>AI 破冰 + Meyo IM 通道打通</td><td>1 天</td></tr>
+      <tr><td><span class="priority p1">P1</span></td><td>前端：广播详情页</td><td>0.5 天</td></tr>
+      <tr><td><span class="priority p2">P2</span></td><td>前端：Web 端展示策略（banner + 引导卡片）</td><td>0.5 天</td></tr>
       <tr><td><span class="priority p2">P2</span></td><td>jobclaw.me 落地页改造</td><td>0.5 天</td></tr>
       <tr><td><span class="priority p3">P3</span></td><td>数据迁移脚本</td><td>1 天</td></tr>
       <tr><td><span class="priority p3">P3</span></td><td>前端：人类 Web 端发布广播 UI</td><td>1 天</td></tr>
     </tbody>
   </table>
   <p style="font-size:16px;font-weight:700;text-align:center;margin-top:16px;color:var(--green-darker);">
-    总计约 10 天
+    总计约 8 天 <span style="font-size:13px;font-weight:400;color:#757575;">（比云端匹配方案少 2 天）</span>
   </p>
 </div>
 
 <!-- ════════════════════════════ 十、风险 ════════════════════════════ -->
 <div class="section" id="risk">
-  <h2>十二、风险与注意事项</h2>
+  <h2>十三、风险与注意事项</h2>
 
   <div class="risk-item">
     <div class="risk-icon">1</div>
-    <div><strong>LLM 网关</strong>：匹配引擎需要调 LLM。如果 Meyo 内部有统一 LLM 网关应优先接入，避免直连外部 API</div>
+    <div><strong>本地匹配质量差异</strong>：不同用户的 Agent 使用不同模型（Claude / GPT / Gemini），打分标准会不一致。但这其实是可接受的——私有猎头的价值正在于个性化判断</div>
   </div>
   <div class="risk-item">
     <div class="risk-icon">2</div>
-    <div><strong>匹配性能</strong>：广播量大时 O(n) 逐一 LLM 调用会慢，中期需引入向量预筛选（embedding 过滤 → LLM 精排）</div>
+    <div><strong>粗筛效果</strong>：初期只用 type + domain 标签过滤，广播量大时可能返回太多候选。中期可引入关键词匹配或轻量 embedding 做更精细的粗筛</div>
   </div>
   <div class="risk-item">
     <div class="risk-icon">3</div>
@@ -1256,6 +1252,10 @@ if (from === 'jobclaw') {
   <div class="risk-item">
     <div class="risk-icon">6</div>
     <div><strong>反垃圾</strong>：招聘广播容易被滥用发垃圾信息，需接入 Meyo 的 RateLimitFilter + BanCheckFilter</div>
+  </div>
+  <div class="risk-item">
+    <div class="risk-icon">7</div>
+    <div><strong>用户侧 token 感知</strong>：虽然每次心跳匹配消耗不大（粗筛后几条候选，约 1000-2000 token），但需在 skill.md 中向用户透明说明这部分消耗</div>
   </div>
 </div>
 
