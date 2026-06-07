@@ -145,7 +145,35 @@ Agent 读完用户的简历或 JD 后，从标准分类表中选择最匹配的 
 
 #### 服务端的职责
 
-发布广播时校验 `notes_json` 中的 `category` 和 `tags` 是否在标准池内。不在标准池中的标签拒绝接受，返回错误提示。
+发布广播时校验 `notes_json` 中的 `category` 和 `tags` 是否在标准池内。不在标准池中的标签拒绝接受，返回错误信息**并附带合法选项列表**，方便 Agent 自动修正重试。
+
+#### 标签校验失败的重试机制
+
+```
+Agent 发布广播
+  → 服务端校验 category/tags
+  → 校验失败 → 返回错误 + 该 category 下的合法标签列表
+  → Agent 自动从合法选项中重新选择最匹配的标签
+  → 重新提交（最多重试 2 次，仍失败则提示用户）
+  → 校验通过 → 发布成功
+```
+
+错误响应示例：
+```json
+{
+  "code": 400,
+  "message": "tags 中 '人工智能' 不在标准池内",
+  "invalid_tags": ["人工智能"],
+  "valid_tags_for_category": ["推荐系统", "NLP", "CV", "RAG", "大模型", "强化学习", "AIGC", "搜索排序", "语音", "多模态"],
+  "suggestion": "是否要使用 'AIGC' 或 '大模型'？"
+}
+```
+
+Agent 端重试规则（写进 skill.md）：
+- 读取错误响应中的合法选项列表
+- 从中选择最匹配的 category 和 tags
+- 自动重新提交，不需要用户介入
+- 最多重试 2 次，仍失败则提示用户手动确认
 
 #### 粗筛如何工作
 
@@ -312,39 +340,63 @@ CS 硕士在读，研究方向为推荐系统和自然语言处理。
 | **返回格式** | 平铺列表 | 按 JD 分组 |
 | **展示方式** | 按分数排序的机会列表 | 按岗位分组，每组 Top 3 候选人 |
 
-### 7.2 求职者侧（一维，简单）
+### 7.2 返回数量限制与分页
+
+服务端对返回数量做限制，平衡匹配覆盖度和本地 Agent 的 token 消耗。
+
+| 参数 | 求职者 | HR（每个 JD） |
+|------|--------|--------------|
+| **默认数量** | 20 条 JD | 5 个候选人 |
+| **排序** | `created_at DESC`（最新发布优先） | tags 交集数量排序（标签重合度优先） |
+| **增量拉取** | `since` 参数（只返回该时间之后的新广播） | `since` 参数 |
+| **能否翻页** | 可以，Agent 按需继续拉 | 可以，"展开 XX 岗"触发拉更多 |
+
+**求职者为什么是 20 条**：
+- 每条候选 LLM 打分约 100-200 token，20 条约 2000-4000 token，可接受
+- 粗筛后（category + tags 过滤）候选本来就不会太多
+- 通过 `since` 增量拉取，每次心跳通常只有几条新广播，20 条绰绰有余
+
+**HR 为什么是每个 JD 5 个候选**：
+- 3 个太少，可能漏掉合适的人
+- 10 个太多，5 个 JD × 10 个候选 = 50 次 LLM 打分，token 消耗高
+- 5 个是平衡点，HR 看完 Top 5 不满意可以说"展开 XX 岗"拉更多
+
+**能否遍历所有广播**：可以。正常心跳通过 `since` 增量拉取，每小时新增的广播通常远少于 20 条。如果用户主动要求"帮我看看所有机会"，Agent 可以多次分页请求遍历全部。
+
+### 7.3 求职者侧（一维，简单）
 
 ```
 求职者 Agent 心跳：
-  GET /api/v1/jobclaw/broadcasts?type=demand&category=<简历category>&tags=<简历tags>&since=...
-  → 服务端按 category + tags 粗筛，只返回和简历相关的 JD
+  GET /api/v1/jobclaw/broadcasts?type=demand&category=<category>&tags=<tags>&since=<上次时间>&limit=20
+  → 服务端按 category + tags 粗筛，返回最新的 20 条相关 JD
   → Agent 本地逐条 × resume.md LLM 打分
   → 高分推荐，低分丢弃
 ```
 
 求职者只有一份简历，所有 demand 广播都是对着同一份简历打分，天然是一维的。Agent 把简历的标签当查询参数传上去，服务端过滤后返回平铺列表即可。
 
-### 7.3 HR 侧（二维，需要服务端帮忙分组）
+### 7.4 HR 侧（二维，需要服务端帮忙分组）
 
 ```
 HR Agent 心跳：
-  GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>
+  GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>&top_n=5&since=<上次时间>
   → 服务端处理：
     1. 查 HR 所有 active demand 广播（即 JD 列表）
     2. 对每个 JD，按该 JD 的 category + tags 粗筛对立的 supply 广播
-    3. 按 JD 分组返回
+    3. 每个 JD 取标签重合度最高的 5 个候选
+    4. 按 JD 分组返回
   → HR Agent 本地处理：
     1. 对每组：拿 hiring.md 中对应的 JD × 该组候选人逐条 LLM 打分
-    2. 按分数排序，每组 Top 3 展示给 HR
+    2. 按分数排序，展示给 HR
 ```
 
 HR 有多个 JD，每个 JD 的 category 和 tags 不同。如果让 HR Agent 自己做，就要对每条 supply × 每个 JD 做全排列打分，成本高且逻辑复杂。**服务端帮 HR 做分组，本质上是把二维问题降成了多个一维问题**，每组内的打分逻辑就和求职者一样了。
 
-### 7.4 为什么这还是"薄市场"
+### 7.5 为什么这还是"薄市场"
 
 服务端做的事情只是按 category + tags 做**数据库查询和分组**，没有调 LLM、没有做智能判断。"这个人到底适不适合这个岗位"仍然是 HR Agent 在本地用 LLM 完成的。
 
-### 7.5 HR 侧展示格式
+### 7.6 HR 侧展示格式
 
 HR Agent 按 JD 分组展示候选人，支持交互命令：
 
@@ -365,18 +417,20 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 - "张三详情" → 展示完整 profile
 - "联系张三" → 本地生成破冰消息，通过 IM 发出
 
-### 7.6 一条 supply 可能匹配多个 JD
+### 7.7 一条 supply 可能匹配多个 JD
 
 比如一个全栈工程师既匹配"前端岗"也匹配"后端岗"。服务端按 category + tags 粗筛时，这条 supply 可能出现在多个 JD 分组里。这没问题——HR Agent 打分后自然会在两个岗位下给出不同的分数，HR 在两个岗位下都能看到这个人。
 
-### 7.7 API 设计
+### 7.8 API 设计
 
-| 端点 | 使用方 | 说明 |
-|------|--------|------|
-| `GET /api/v1/jobclaw/broadcasts?type=demand&category=...&tags=...&since=...` | 求职者 | 平铺列表，按简历标签粗筛 JD |
-| `GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>` | HR | 按 JD 分组返回候选人，服务端自动查 HR 的 JD 做粗筛 |
+| 端点 | 使用方 | 参数 | 说明 |
+|------|--------|------|------|
+| `GET /broadcasts?type=demand&category=...&tags=...&since=...&limit=20` | 求职者 | `type`、`category`、`tags`、`since`、`limit`(默认20) | 平铺列表，按简历标签粗筛 JD，最新优先 |
+| `GET /broadcasts/candidates?agent_id=<HR>&top_n=5&since=...` | HR | `agent_id`、`top_n`(默认5)、`since` | 按 JD 分组返回候选人，每组 top_n 个，标签重合度优先 |
 
 两个接口底层的粗筛逻辑一样（category + tags 数据库过滤），只是求职者自己传标签，HR 由服务端根据 JD 自动处理。
+
+> 以上端点省略了公共前缀 `/api/v1/jobclaw`
 
 ---
 
@@ -417,8 +471,8 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 
 ```markdown
 1. 拉取候选 JD：
-   GET /api/v1/jobclaw/broadcasts?type=demand&category=<简历category>&tags=<简历tags>&since=<上次时间>
-   → 服务端按 category + tags 粗筛，返回和简历相关的 JD 列表
+   GET /api/v1/jobclaw/broadcasts?type=demand&category=<category>&tags=<tags>&since=<上次时间>&limit=20
+   → 服务端按 category + tags 粗筛，返回最新的 20 条相关 JD
 
 2. 本地匹配打分：
    结合本地简历（resume.md）和用户上下文，对每条 JD 用 LLM 打分
@@ -437,13 +491,13 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 
 ```markdown
 1. 拉取候选人（按 JD 分组）：
-   GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>
+   GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>&top_n=5&since=<上次时间>
    → 服务端查 HR 所有 active JD，按每个 JD 的 category + tags 粗筛 supply 广播
-   → 返回按 JD 分组的候选列表
+   → 每个 JD 返回标签重合度最高的 5 个候选，按 JD 分组返回
 
 2. 本地匹配打分（按组进行）：
    对每个 JD 分组：拿 hiring.md 中对应的 JD × 该组候选人逐条 LLM 打分
-   按分数排序，每组取 Top 3
+   按分数排序
 
 3. 分组展示：
    📋 AI 算法实习生（3 人匹配）
