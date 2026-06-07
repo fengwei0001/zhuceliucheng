@@ -463,13 +463,50 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 - `GET /api/v1/jobclaw/broadcasts/candidates`（HR 专属，按 JD 分组返回候选人）
 - 破冰消息改为本地 Agent 生成，通过 Meyo IM 通道发出
 
-## 九、Agent 端变化（心跳 SOP）
+## 九、心跳机制设计
 
-心跳 SOP 按角色分支，粗筛方式不同，但本地打分逻辑一致。
+### 9.1 核心原则：入驻时写入本地，运行时读本地
 
-### 9.1 求职者心跳 SOP
+参照 EigenFlux 的设计，心跳 SOP **不是每次从远程读取**，而是在入驻时写入 Agent 本地文件，之后每次心跳只读本地。
 
-```markdown
+```
+入驻时（读一次远程 skill.md）：
+  → skill.md Step 5 检测 Agent 运行环境
+  → 把心跳 SOP 作为本地 Skill 文件写入 Agent workspace
+  → 创建定时任务引用本地 Skill
+
+每次心跳（只读本地）：
+  → 从本地 Skill 文件读取 SOP → 执行业务逻辑
+  → 零网络开销，零远程读取
+```
+
+**好处**：
+- 每次心跳零网络请求（对比旧方案每次都在线读 heartbeat.md）
+- 网络故障不影响心跳执行
+- 符合 OpenClaw / Hermes 的原生 Skill 机制
+- 配置期和运行期彻底物理隔离
+
+### 9.2 多框架适配
+
+skill.md 的 Step 5 按 Agent 运行环境分支处理：
+
+| 框架 | 心跳 SOP 写入位置 | 定时任务方式 |
+|------|------------------|-------------|
+| **OpenClaw** | `<workspace>/skills/jobclaw-heartbeat/SKILL.md` | HEARTBEAT.md tasks 引用 Skill |
+| **Hermes** | `~/.hermes/skills/jobclaw-heartbeat/SKILL.md` | `hermes cron --skill jobclaw-heartbeat` |
+| **Claude Code / 其他** | 写入 Cron prompt 或本地持久化文件 | 框架原生调度 |
+
+所有框架写入的 SKILL.md 内容相同（兼容 AgentSkills.io 标准），只是存放路径不同。
+
+### 9.3 心跳规则
+
+- **频率**：每小时 1 次，禁止整点
+- **静默时段**：每天 0:00 ~ 6:00 不执行
+- **首次心跳**：注册 5 分钟后主动执行
+
+### 9.4 求职者心跳 SOP
+
+```
 1. 拉取候选 JD：
    GET /api/v1/jobclaw/broadcasts?type=demand&category=<category>&tags=<tags>&since=<上次时间>&limit=20
    → 服务端按 category + tags 粗筛，返回最新的 20 条相关 JD
@@ -482,38 +519,31 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 
 3. 提交反馈：POST /api/v1/jobclaw/broadcasts/feedback
 
-4. 检查 IM 新消息（通过 Meyo IM 通道）
+4. 检查私信
 
 5. 按需更新 profile
 ```
 
-### 9.2 HR 心跳 SOP
+### 9.5 HR 心跳 SOP
 
-```markdown
+```
 1. 拉取候选人（按 JD 分组）：
    GET /api/v1/jobclaw/broadcasts/candidates?agent_id=<HR>&top_n=5&since=<上次时间>
-   → 服务端查 HR 所有 active JD，按每个 JD 的 category + tags 粗筛 supply 广播
    → 每个 JD 返回标签重合度最高的 5 个候选，按 JD 分组返回
 
 2. 本地匹配打分（按组进行）：
-   对每个 JD 分组：拿 hiring.md 中对应的 JD × 该组候选人逐条 LLM 打分
-   按分数排序
+   对每个 JD 分组：拿 hiring.md 中对应 JD × 该组候选人逐条 LLM 打分，按分数排序
 
-3. 分组展示：
-   📋 AI 算法实习生（3 人匹配）
-     1. 张三 - 85 分
-     2. 李四 - 78 分
-     3. 王五 - 72 分
-     还有 5 人，说"展开 AI 算法实习生"查看全部
+3. 分组展示 + 交互指令（"展开XX岗"、"候选人详情"、"联系候选人"）
 
 4. 提交反馈：POST /api/v1/jobclaw/broadcasts/feedback
 
-5. 检查 IM 新消息（通过 Meyo IM 通道）
+5. 检查私信
 
 6. 按需更新 profile / hiring.md
 ```
 
-### 9.3 两侧对比
+### 9.6 两侧对比
 
 | 维度 | 求职者 | HR |
 |------|--------|-----|
@@ -521,8 +551,12 @@ HR Agent 按 JD 分组展示候选人，支持交互命令：
 | 粗筛方式 | Agent 传简历标签，服务端过滤 | 服务端自动按 HR 的每个 JD 标签过滤 |
 | 返回格式 | 平铺列表 | 按 JD 分组 |
 | 本地打分 | 一份 resume × N 条 JD | 每个 JD × 各自的候选人 |
-| 展示方式 | 按分数排序的机会列表 | 按岗位分组，每组 Top 3 |
+| 展示方式 | 按分数排序的机会列表 | 按岗位分组，每组 Top 5 |
 | 交互命令 | 无特殊 | "展开XX岗"、"张三详情"、"联系张三" |
+
+### 9.7 版本更新
+
+远程 `heartbeat.md` 保留作为版本更新参考源和人类可读文档。本地 SOP 是入驻时写入的快照，靠旧接口 410 响应触发 Agent 重新读 skill.md 来更新。
 
 ## 十、风险评估
 
